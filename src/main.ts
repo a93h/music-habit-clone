@@ -95,7 +95,8 @@ function fromLBZToLBZ(lbz: any) {
 
 function trackFromFMToLBZ(lfm: any) { // from last.fm/libre.fm to ListenBrainz
     let lbz: typeof Listen = {}
-    lbz.listened_at = lfm.date.uts
+    if (!isNullOrUndefined(lfm.date) && !isNullOrUndefined(lfm.date.uts))
+      lbz.listened_at = lfm.date.uts
     lbz.track_metadata = {}
     lbz.track_metadata.artist_name = lfm.artist['#text']
     lbz.track_metadata.track_name = lfm.name
@@ -103,15 +104,17 @@ function trackFromFMToLBZ(lfm: any) { // from last.fm/libre.fm to ListenBrainz
     let mbid: string = lfm.artist['mbid']
     if (!isNullOrUndefined(mbid) && mbid !== "")
       lbz.track_metadata.additional_info.artist_mbids = [mbid]
-    mbid = lfm.album['mbid']
-    if (!isNullOrUndefined(mbid) && mbid !== "")
-      lbz.track_metadata.additional_info.release_mbid = mbid
+    if (!isNullOrUndefined(lfm.album)) {
+      mbid = lfm.album['mbid']
+      if (!isNullOrUndefined(mbid) && mbid !== "")
+        lbz.track_metadata.additional_info.release_mbid = mbid
+      let release: string = lfm.album['#text']
+      if (!isNullOrUndefined(release) && release !== "")
+        lbz.track_metadata.release_name = release
+    } 
     mbid = lfm.mbid
     if (!isNullOrUndefined(mbid) && mbid !== "")
       lbz.track_metadata.additional_info.track_mbid = mbid
-    let release: string = lfm.album['#text']
-    if (!isNullOrUndefined(release) && release !== "")
-      lbz.track_metadata.release_name = release
     if (!isNullOrUndefined(lfm.trackNumber))
       lbz.track_metadata.additional_info.tracknumber = lfm.trackNumber
     return lbz
@@ -267,8 +270,8 @@ async function main() {
           if(len == 2) {
             tracks_1 = fromLFMToLFM(recent_tracks.recenttracks.track[1])
             tracks_2 = trackFromFMToLBZ(recent_tracks.recenttracks.track[1])
-            now_plays_1 = recent_tracks.recenttracks.track[0]
-            now_plays_2 = trackFromFMToLBZ(now_plays_1)
+            now_plays_1 = fromLFMToLFM(recent_tracks.recenttracks.track[0])
+            now_plays_2 = trackFromFMToLBZ(recent_tracks.recenttracks.track[0])
             np_flag = true
           } else if (len == 1) {
             console.warn('Null source now playing received')
