@@ -220,7 +220,12 @@ async function main() {
   var last_tr_1, last_tr_2, last_np_1, last_np_2 = null
   var cur_t = null
   var las_t = Math.round(Date.now()/1000)
-  var task = cron.schedule(cfg.DELAY.toString() + ' * * * * *', async () => {
+  var cron_time = '*/' + cfg.DELAY.toString() + ' * * * * *'
+  console.log(cron_time)
+  if (!cron.validate(cron_time)) {
+    throw Error("Check cfg.DELAY= in .env")
+  }
+  var task = cron.schedule(cron_time, async () => {
     try {
       let np_flag = false
       if(cfg.SRC_TYPE==2) {
@@ -333,8 +338,6 @@ async function main() {
     console.info("Cron job completed. Notice every " + cfg.DELAY +  " seconds:: timestamp in seconds " + Math.round((Date.now()/1000)))
     console.info("seconds between calls:: " + (cur_t - las_t))
     las_t = cur_t
-  },{
-    scheduled: false
   });
   task.start();
 }
