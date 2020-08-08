@@ -41,7 +41,7 @@ var LastFmRequest = module.exports = async function(lastfm, method, params) {
     options.headers = requestHeaders(httpVerb, host, data)
     try {
       const response = await got(final_url, options)
-      console.log(response.body);
+      //console.log(host + ":: " + response.body);
       const txt = response.body
       var json_obj = null
       try {
@@ -57,7 +57,8 @@ var LastFmRequest = module.exports = async function(lastfm, method, params) {
         }
       }
     } catch (error) {
-      console.log(error.response.body);
+      console.log(host + ":: return:: " + error.response.body);
+      console.log(host + ":: sent:: " + data);
       //=> 'Internal server error ...'
     }
     return json_obj
@@ -108,7 +109,7 @@ var LastFmRequest = module.exports = async function(lastfm, method, params) {
     };
     if (httpVerb === "POST") {
       headers["Content-Type"] = 'application/x-www-form-urlencoded';
-      headers["Content-Length"] = data.length.toString();
+      headers["Content-Length"] = data.length.toString()
     }
     return headers;
   }
@@ -149,6 +150,4 @@ var LastFmRequest = module.exports = async function(lastfm, method, params) {
     sig += secret;
     return crypto.createHash("md5").update(sig, "utf8").digest("hex");
   }
-
-  const byteSize = str => new Blob([str]).size;
 };

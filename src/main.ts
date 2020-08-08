@@ -2,8 +2,8 @@ import { isNullOrUndefined } from "util";
 
 var fs = require('fs')
 var dotenv = require('dotenv')
-var CronJob = require('cron').CronJob;
-var md5 = require('md5');
+var cron = require('node-cron')
+var md5 = require('md5')
 
 // ** BEGIN EDIT HERE **************************************************
 
@@ -27,7 +27,8 @@ const cfg = {
   DEST_NAME_LIBREFM: process.env.DEST_NAME_LIBREFM,
   DEST_PWD_LIBREFM: process.env.DEST_PWD_LIBREFM,
   DEST_NAME_LISTENBRAINZ: process.env.DEST_NAME_LISTENBRAINZ,
-  DEST_PWD_LISTENBRAINZ: process.env.DEST_PWD_LISTENBRAINZ
+  DEST_PWD_LISTENBRAINZ: process.env.DEST_PWD_LISTENBRAINZ,
+  DELAY: parseInt(process.env.DELAY)
 }
 
 // ** END EDIT HERE ****************************************************
@@ -85,6 +86,13 @@ function fromLFMToLFM(lfm: any) {
   return lfmo
 }
 
+function fromLBZToLBZ(lbz: any) {
+  let lbzo: typeof Listen = {}
+  lbzo.listened_at = lbz.listened_at
+  lbzo.track_metadata = lbz.track_metadata
+  return lbzo
+}
+
 function trackFromFMToLBZ(lfm: any) { // from last.fm/libre.fm to ListenBrainz
     let lbz: typeof Listen = {}
     lbz.listened_at = lfm.date.uts
@@ -111,25 +119,25 @@ function trackFromFMToLBZ(lfm: any) { // from last.fm/libre.fm to ListenBrainz
 
 function trackFromLBZToFM(lbz: typeof Listen) {
   let lfm: any = {}
-  lfm.date = {}
-  lfm.date.uts = lbz.listened_at
-  lfm.artist = {}
+  if (!isNullOrUndefined(lbz.listened_at))
+    lfm.timestamp = lbz.listened_at
   lfm.artist = lbz.track_metadata.artist_name
-  lfm.name = lbz.track_metadata.track_name
-  if (isNullOrUndefined(lfm.album) && lfm.album !== "")
-    lbz.track_metadata.release_name = lfm.album
+  lfm.track = lbz.track_metadata.track_name
+  let album: string = lbz.track_metadata.release_name
+  if (isNullOrUndefined(album) && album !== "")
+     lfm.album = album
   let add_info_is: boolean =
     lbz.track_metadata.additional_info ? true: false
   if (add_info_is) {
     let mbid : string = ""
     mbid = lbz.track_metadata.additional_info.track_mbid 
     if (!isNullOrUndefined(mbid) && mbid !== "")
-      lfm['mbid'] = mbid
+      lfm.mbid = mbid
     let tn: any = lbz.track_metadata.additional_info.tracknumber 
     if (!isNullOrUndefined(tn))
       lfm.trackNumber = tn
   }
-  return lbz
+  return lfm
 }
 
 async function main() {
@@ -210,26 +218,39 @@ async function main() {
   }
   var tracks_1, tracks_2, now_plays_1, now_plays_2 = null
   var last_tr_1, last_tr_2, last_np_1, last_np_2 = null
-  var job = new CronJob('15 * * * * *',  async function() {
+  var cur_t = null
+  var las_t = Math.round(Date.now()/1000)
+  var task = cron.schedule(cfg.DELAY.toString() + ' * * * * *', async () => {
     try {
-      let np_flag = null
+      let np_flag = false
       if(cfg.SRC_TYPE==2) {
-        const src_tr : typeof Listens_Payload = await src.Listens(cfg.SRC_NAME,1)
+        var src_tr : typeof Listens_Payload = await src.Listens(cfg.SRC_NAME,1)
         if (isNullOrUndefined(src_tr))  {
           console.warn('Null source track received')
         } else {
-          tracks_2 = src_tr.payload.listens[0]
-          tracks_1 = trackFromLBZToFM(tracks_2)
+          var len = Object.keys(src_tr.payload.listens).length
+          if (len < 1) {
+            console.warn('Not enough listen data for current track')
+          } else {
+            tracks_2 = fromLBZToLBZ(src_tr.payload.listens[0])
+            tracks_1 = trackFromLBZToFM(tracks_2)
+          }
         }
-        const src_np : typeof Now_Playing_Payload = await src.Playing_Now(cfg.SRC_NAME)
+        var src_np : typeof Now_Playing_Payload = await src.Playing_Now(cfg.SRC_NAME)
         if (isNullOrUndefined(src_np))  {
           console.warn('Null source now playing received')
         } else {
-          now_plays_2 = src_np.payload.listens[0]
-          now_plays_1 = trackFromLBZToFM(now_plays_2)
+          var len = Object.keys(src_np.payload.listens).length
+          if (len < 1) {
+            console.warn('Not enough listen data for now playing')
+          } else {
+            np_flag = true
+            now_plays_2 = fromLBZToLBZ(src_np.payload.listens[0])
+            now_plays_1 = trackFromLBZToFM(now_plays_2)
+          }
         }
       } else {
-        const recent_tracks = await src.user.getRecentTracks({
+        var recent_tracks = await src.user.getRecentTracks({
           limit: 1,
           user: cfg.SRC_NAME,
           page: 1
@@ -237,7 +258,7 @@ async function main() {
         if (isNullOrUndefined(recent_tracks))  {
           console.warn('Null recent tracks received')
         } else {
-          const len = Object.keys(recent_tracks.recenttracks.track).length
+          var len = Object.keys(recent_tracks.recenttracks.track).length
           if(len == 2) {
             tracks_1 = fromLFMToLFM(recent_tracks.recenttracks.track[1])
             tracks_2 = trackFromFMToLBZ(recent_tracks.recenttracks.track[1])
@@ -246,7 +267,6 @@ async function main() {
             np_flag = true
           } else if (len == 1) {
             console.warn('Null source now playing received')
-            np_flag = false
             tracks_1 = fromLFMToLFM(recent_tracks.recenttracks.track[0])
             tracks_2 = trackFromFMToLBZ(recent_tracks.recenttracks.track[0])
             if (isNullOrUndefined(tracks_1))  {
@@ -309,8 +329,14 @@ async function main() {
       console.error(err.message)
       console.trace(err)
     }
- }, null, true, 'America/Toronto');
- job.start();
+    cur_t = Math.round(Date.now()/1000)
+    console.info("Cron job completed. Notice every " + cfg.DELAY +  " seconds:: timestamp in seconds " + Math.round((Date.now()/1000)))
+    console.info("seconds between calls:: " + (cur_t - las_t))
+    las_t = cur_t
+  },{
+    scheduled: false
+  });
+  task.start();
 }
 
 main()
